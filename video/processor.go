@@ -168,11 +168,10 @@ func (p *Processor) generateM3U8(videoId, videoPath, baseDir string) error {
 
 	cmd := exec.Command("ffmpeg", args...)
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Run()
+	// Capture combined output for logging on error
+	output, err := cmd.CombinedOutput()
 	if err != nil {
+		slog.Error("FFmpeg failed", slog.String("output", string(output)), slog.String("error", err.Error()))
 		return fmt.Errorf("FFmpeg failed: %w", err)
 	}
 
