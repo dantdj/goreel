@@ -2,6 +2,7 @@ package queueing
 
 import (
 	"log/slog"
+	"sync"
 
 	"github.com/rabbitmq/amqp091-go"
 )
@@ -10,6 +11,7 @@ type Client struct {
 	conn *amqp091.Connection
 	ch   *amqp091.Channel
 	url  string
+	mu   sync.Mutex
 }
 
 func NewRabbitClient(url string) (*Client, error) {
@@ -44,8 +46,8 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-// Sends a byte payload to the named queue, declaring the queue if needed.
-func (c *Client) Publish(queue string, body []byte) error {
+// Ensures that a queue with the given name exists.
+func (c *Client) EnsureQueue(queue string) error {
 	slog.Info("Declaring queue", slog.String("queue", queue))
 	_, err := c.ch.QueueDeclare(
 		queue, // name
@@ -59,9 +61,16 @@ func (c *Client) Publish(queue string, body []byte) error {
 		slog.Error("Failed to declare queue", slog.String("queue", queue), slog.String("error", err.Error()))
 		return err
 	}
+	return nil
+}
+
+// Sends a byte payload to the named queue.
+func (c *Client) Publish(queue string, body []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	slog.Info("Publishing message to RabbitMQ", slog.String("queue", queue), slog.Int("body_size", len(body)))
-	err = c.ch.Publish(
+	err := c.ch.Publish(
 		"",
 		queue,
 		false,
@@ -77,19 +86,6 @@ func (c *Client) Publish(queue string, body []byte) error {
 
 // Registers a consumer for the given queue name, processing messages with the provided handler function.
 func (c *Client) StartConsumer(queue string, handler func([]byte) error) error {
-	_, err := c.ch.QueueDeclare(
-		queue, // name
-		false, // durable
-		false, // auto-delete
-		false, // exclusive
-		false, // no-wait
-		nil,   // arguments
-	)
-	if err != nil {
-		slog.Error("Failed to declare queue", slog.String("queue", queue), slog.String("error", err.Error()))
-		return err
-	}
-
 	msgs, err := c.ch.Consume(
 		queue, // name
 		"",    // consumer

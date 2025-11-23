@@ -35,6 +35,11 @@ func NewApplication() *Application {
 		panic("couldn't set up RabbitMQ client")
 	}
 
+	if err := rabbitClient.EnsureQueue("video_processing"); err != nil {
+		slog.Error("Failed to ensure queue", slog.String("error", err.Error()))
+		panic("couldn't ensure queue existed")
+	}
+
 	// Video processor setup
 	processor := video.NewProcessor(storageClient)
 
