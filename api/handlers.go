@@ -37,6 +37,7 @@ func VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseMultipartForm(10 * 1024) // Limit to 10 KB for other form fields
 	if err != nil {
 		if err.Error() == "http: request body too large" {
+			slog.Error("Request body too large, rejecting request", slog.String("error", err.Error()), slog.Int("max_size", maxRequestBodySize/1024/1024), slog.Int64("actual_size", r.ContentLength))
 			http.Error(w, fmt.Sprintf("Request body too large. Max allowed is %d MB.", maxRequestBodySize/1024/1024), http.StatusRequestEntityTooLarge)
 			return
 		}
@@ -95,7 +96,7 @@ func RetrieveVideoHandler(w http.ResponseWriter, r *http.Request) {
 	videoData, contentLength, contentType := storageClient.Retrieve(id)
 	defer videoData.Close()
 
-	slog.Info("Retrieved file")
+	slog.Info("Retrieved file", slog.String("file_name", id))
 
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", contentLength))
 	w.Header().Set("Content-Type", contentType)
@@ -109,7 +110,7 @@ func RetrieveVideoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("Streamed file to client")
+	slog.Info("Successfully streamed file to client", slog.String("file_name", id))
 }
 
 func ProcessVideoHandler(w http.ResponseWriter, r *http.Request) {

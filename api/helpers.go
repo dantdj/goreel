@@ -146,6 +146,7 @@ func saveToTemp(fileDir, filename string, videoData io.ReadCloser) error {
 
 	_, err = io.Copy(outputFile, videoData)
 	if err != nil {
+		slog.Error("Failed to copy video data to temp file", slog.String("error", err.Error()))
 		return err
 	}
 	return nil
@@ -162,6 +163,7 @@ func getFilePaths(dirPath string) ([]string, error) {
 
 	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			slog.Error("Failed to walk directory", slog.String("error", err.Error()))
 			return err
 		}
 
@@ -177,6 +179,7 @@ func getFilePaths(dirPath string) ([]string, error) {
 	})
 
 	if err != nil {
+		slog.Error("Failed to walk directory", slog.String("error", err.Error()))
 		return nil, fmt.Errorf("error walking directory: %w", err)
 	}
 

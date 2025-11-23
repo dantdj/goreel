@@ -18,6 +18,7 @@ func routes() http.Handler {
 	var err error
 	rabbitClient, err = queueing.NewRabbitClient(rabbitUrl)
 	if err != nil {
+		slog.Error("Failed to create RabbitMQ client", slog.String("error", err.Error()))
 		panic("couldn't set up RabbitMQ client")
 	}
 

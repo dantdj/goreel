@@ -21,11 +21,19 @@ func main() {
 	client, err := axiom.NewClient(
 		axiom.SetPersonalTokenConfig(os.Getenv("AXIOM_TOKEN"), os.Getenv("AXIOM_ORG_ID")),
 	)
+	if err != nil {
+		slog.Error("Error creating axiom client", slog.String("error", err.Error()))
+		return
+	}
 
 	handler, err := adapter.New(
 		adapter.SetDataset(os.Getenv("AXIOM_DATASET")),
 		adapter.SetClient(client),
 	)
+	if err != nil {
+		slog.Error("Error creating slog handler", slog.String("error", err.Error()))
+		return
+	}
 	defer handler.Close()
 
 	//logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))

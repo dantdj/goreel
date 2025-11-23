@@ -15,11 +15,13 @@ type Client struct {
 func NewRabbitClient(url string) (*Client, error) {
 	conn, err := amqp091.Dial(url)
 	if err != nil {
+		slog.Error("Error creating RabbitMQ connection", slog.String("error", err.Error()))
 		return nil, err
 	}
 
 	ch, err := conn.Channel()
 	if err != nil {
+		slog.Error("Error creating RabbitMQ channel", slog.String("error", err.Error()))
 		conn.Close()
 		return nil, err
 	}
@@ -35,6 +37,7 @@ func NewRabbitClient(url string) (*Client, error) {
 
 func (c *Client) Close() error {
 	if err := c.ch.Close(); err != nil {
+		slog.Error("Error closing RabbitMQ channel", slog.String("error", err.Error()))
 		c.conn.Close()
 		return err
 	}
@@ -83,6 +86,7 @@ func (c *Client) StartConsumer(queue string, handler func([]byte) error) error {
 		nil,   // arguments
 	)
 	if err != nil {
+		slog.Error("Failed to declare queue", slog.String("queue", queue), slog.String("error", err.Error()))
 		return err
 	}
 
@@ -96,6 +100,7 @@ func (c *Client) StartConsumer(queue string, handler func([]byte) error) error {
 		nil,   // arguments
 	)
 	if err != nil {
+		slog.Error("Failed to consume queue", slog.String("queue", queue), slog.String("error", err.Error()))
 		return err
 	}
 
