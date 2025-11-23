@@ -7,9 +7,9 @@ mechanisms, as well as more exploring of Postgres in a web application.
 * Processes video data using FFMPEG
 * Uses RabbitMQ for message queuing for video processing
   * This is currently more to mess around with queues than anything else,
-    queues doesn't necessarily make full sense in an application like this. 
-    You'd likely want to have a separate service for processing videos
-    for a queue to make most sense.
+    though it is handy to have a system for throttling the amount of video
+    processing going on at once by limiting the number of messages processed
+    at once.
 
 ## To do
 

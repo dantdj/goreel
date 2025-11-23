@@ -28,6 +28,7 @@ func NewRabbitClient(url string) (*Client, error) {
 		return nil, err
 	}
 
+	// Only allow one message to be processed at a time
 	ch.Qos(1, 0, false)
 
 	return &Client{
