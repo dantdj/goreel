@@ -1,19 +1,19 @@
 package utils
 
 import (
-	"math/rand"
-	"time"
+	"crypto/rand"
 )
 
 // Generates a random alphanumeric string of length 10
-func GenerateRandomId() string {
+func GenerateRandomId() (string, error) {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	// Generate a 10-character string
 	b := make([]byte, 10)
-	for i := range b {
-		b[i] = charset[seededRand.Intn(len(charset))]
+	if _, err := rand.Read(b); err != nil {
+		return "", err
 	}
-	return string(b)
+
+	for i, v := range b {
+		b[i] = charset[int(v)%len(charset)]
+	}
+	return string(b), nil
 }

@@ -54,7 +54,12 @@ func (app *Application) VideoUploadHandler(w http.ResponseWriter, r *http.Reques
 	// TODO: Probably good to do some content type validation
 
 	slog.Info("Starting video upload...")
-	blobName := utils.GenerateRandomId()
+	blobName, err := utils.GenerateRandomId()
+	if err != nil {
+		slog.Error("Failed to generate blob name", slog.String("error", err.Error()))
+		serverErrorResponse(w)
+		return
+	}
 
 	blobLocation := app.Storage.Upload(file, handler.Size, blobName)
 
