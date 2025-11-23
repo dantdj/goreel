@@ -38,7 +38,9 @@ func writeJSON(w http.ResponseWriter, status int, data envelope, headers http.He
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write(js)
+	if _, err := w.Write(js); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -84,8 +86,6 @@ func processVideo(videoId string) error {
 	videoData, _, _ := storageClient.Retrieve(videoId)
 	defer videoData.Close()
 
-	slog.Info("Retrieved file")
-
 	// TODO: Sort this out, probably create the base dir and then
 	// the input and output dirs in one method
 	baseDir := "./" + videoId + "/"
@@ -93,23 +93,23 @@ func processVideo(videoId string) error {
 	inputPath := filepath.Join(inputDir, videoId)
 
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		slog.Error("Failed to make temp directory", slog.String("attempted_path", baseDir), slog.String("error", err.Error()))
-		return nil
+		return fmt.Errorf("failed to make temp directory %s: %w", baseDir, err)
 	}
 
 	err := saveToTemp(inputDir, videoId, videoData)
 	if err != nil {
-		slog.Error("Failed to save video to temp file", slog.String("error", err.Error()))
-		return nil
+		return fmt.Errorf("failed to save video to temp file: %w", err)
 	}
 
 	err = video.GenerateM3U8(videoId, inputPath, baseDir)
 	if err != nil {
-		slog.Error("Failed to generate M3U8 playlist", slog.String("error", err.Error()))
-		return nil
+		return fmt.Errorf("failed to generate M3U8 playlist: %w", err)
 	}
 
-	playlistFiles, _ := getFilePaths(baseDir)
+	playlistFiles, err := getFilePaths(baseDir)
+	if err != nil {
+		return fmt.Errorf("failed to get file paths: %w", err)
+	}
 
 	for _, p := range playlistFiles {
 		file, _ := os.Open(p)
@@ -118,14 +118,15 @@ func processVideo(videoId string) error {
 		storageClient.Upload(file, fileInfo.Size(), file.Name())
 	}
 
-	err = deleteFromTemp(baseDir)
+	// Remove temporary files
+	err = os.RemoveAll(baseDir)
 	if err != nil {
-		slog.Error("Failed to delete temp files", slog.String("error", err.Error()))
+		return fmt.Errorf("failed to delete temp files: %w", err)
 	}
 
 	err = storageClient.Delete(videoId)
 	if err != nil {
-		slog.Error("Failed to delete video from storage", slog.String("error", err.Error()))
+		return fmt.Errorf("failed to delete video from storage: %w", err)
 	}
 
 	return nil
@@ -133,28 +134,20 @@ func processVideo(videoId string) error {
 
 func saveToTemp(fileDir, filename string, videoData io.ReadCloser) error {
 	if err := os.MkdirAll(fileDir, 0755); err != nil {
-		slog.Error("Failed to make input directory", slog.String("attempted_path", fileDir), slog.String("error", err.Error()))
-		return nil
+		return fmt.Errorf("failed to make input directory %s: %w", fileDir, err)
 	}
 	filepath := filepath.Join(fileDir, filename)
 	outputFile, err := os.Create(filepath)
 	if err != nil {
-		slog.Error("Failed to create temp input file", slog.String("attempted_path", filepath), slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("failed to create temp input file %s: %w", filepath, err)
 	}
 	defer outputFile.Close()
 
 	_, err = io.Copy(outputFile, videoData)
 	if err != nil {
-		slog.Error("Failed to copy video data to temp file", slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("failed to copy video data to temp file: %w", err)
 	}
 	return nil
-}
-
-func deleteFromTemp(filepath string) error {
-	slog.Info("Deleting temp files", slog.String("filepath", filepath))
-	return os.RemoveAll(filepath)
 }
 
 // getFilePaths returns a slice of file paths within a given directory.
@@ -163,7 +156,6 @@ func getFilePaths(dirPath string) ([]string, error) {
 
 	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			slog.Error("Failed to walk directory", slog.String("error", err.Error()))
 			return err
 		}
 
@@ -179,7 +171,6 @@ func getFilePaths(dirPath string) ([]string, error) {
 	})
 
 	if err != nil {
-		slog.Error("Failed to walk directory", slog.String("error", err.Error()))
 		return nil, fmt.Errorf("error walking directory: %w", err)
 	}
 

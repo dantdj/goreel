@@ -41,8 +41,7 @@ func GenerateM3U8(videoId, videoPath, baseDir string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		slog.Error("FFmpeg failed", slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("FFmpeg failed: %w", err)
 	}
 
 	return nil

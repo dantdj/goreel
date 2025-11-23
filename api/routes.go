@@ -23,7 +23,9 @@ func routes() http.Handler {
 	}
 
 	rabbitClient.StartConsumer(videoProcessingQueueName, func(message []byte) error {
-		processVideo(string(message))
+		if err := processVideo(string(message)); err != nil {
+			slog.Error("Failed to process video", slog.String("video_id", string(message)), slog.String("error", err.Error()))
+		}
 		return nil
 	})
 

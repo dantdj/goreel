@@ -116,5 +116,8 @@ func RetrieveVideoHandler(w http.ResponseWriter, r *http.Request) {
 func ProcessVideoHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("vId")
 
-	processVideo(id)
+	if err := processVideo(id); err != nil {
+		slog.Error("Failed to process video", slog.String("video_id", id), slog.String("error", err.Error()))
+		serverErrorResponse(w)
+	}
 }
