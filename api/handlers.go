@@ -5,19 +5,15 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
-	"github.com/dantdj/goreel/queueing"
-	"github.com/dantdj/goreel/storage"
 	"github.com/dantdj/goreel/utils"
-	"github.com/dantdj/goreel/video"
 )
 
 var maxRequestBodySize = 500 * 1024 * 1024
-var rabbitClient *queueing.Client
+var videoProcessingQueueName = "video_processing"
 
-func PingHandler(w http.ResponseWriter, r *http.Request) {
+func (app *Application) PingHandler(w http.ResponseWriter, r *http.Request) {
 	env := envelope{
 		"status": "available",
 		"system_info": map[string]string{
@@ -31,7 +27,7 @@ func PingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
+func (app *Application) VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Limit the overall size of the request body
 	r.Body = http.MaxBytesReader(w, r.Body, int64(maxRequestBodySize))
 
@@ -58,18 +54,9 @@ func VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO: Probably good to do some content type validation
 
 	slog.Info("Starting video upload...")
-	storageAccountName := os.Getenv("AZURE_STORAGE_ACCOUNT_NAME")
-	if storageAccountName == "" {
-		storageAccountName = "goreelstorage"
-	}
-	containerName := os.Getenv("AZURE_STORAGE_CONTAINER_NAME")
-	if containerName == "" {
-		containerName = "videos"
-	}
-	storageClient := storage.NewAzureBlobStorage(os.Getenv("AZURE_STORAGE_CONNECTION_STRING"), storageAccountName, containerName)
 	blobName := utils.GenerateRandomId()
 
-	blobLocation := storageClient.Upload(file, handler.Size, blobName)
+	blobLocation := app.Storage.Upload(file, handler.Size, blobName)
 
 	slog.Info("Uploaded video", slog.String("video_id", blobName))
 
@@ -80,7 +67,7 @@ func VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	body := []byte(blobName)
 
-	err = rabbitClient.Publish(videoProcessingQueueName, body)
+	err = app.RabbitClient.Publish(videoProcessingQueueName, body)
 	if err != nil {
 		slog.Error("Failed to publish message to RabbitMQ", slog.String("error", err.Error()))
 		serverErrorResponse(w)
@@ -93,20 +80,10 @@ func VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func RetrieveVideoHandler(w http.ResponseWriter, r *http.Request) {
+func (app *Application) RetrieveVideoHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("vId")
 
-	storageAccountName := os.Getenv("AZURE_STORAGE_ACCOUNT_NAME")
-	if storageAccountName == "" {
-		storageAccountName = "goreelstorage"
-	}
-	containerName := os.Getenv("AZURE_STORAGE_CONTAINER_NAME")
-	if containerName == "" {
-		containerName = "videos"
-	}
-	storageClient := storage.NewAzureBlobStorage(os.Getenv("AZURE_STORAGE_CONNECTION_STRING"), storageAccountName, containerName)
-
-	videoData, contentLength, contentType := storageClient.Retrieve(id)
+	videoData, contentLength, contentType := app.Storage.Retrieve(id)
 	defer videoData.Close()
 
 	slog.Info("Retrieved file", slog.String("file_name", id))
@@ -126,22 +103,10 @@ func RetrieveVideoHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Successfully streamed file to client", slog.String("file_name", id))
 }
 
-func ProcessVideoHandler(w http.ResponseWriter, r *http.Request) {
+func (app *Application) ProcessVideoHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("vId")
 
-	storageAccountName := os.Getenv("AZURE_STORAGE_ACCOUNT_NAME")
-	if storageAccountName == "" {
-		storageAccountName = "goreelstorage"
-	}
-	containerName := os.Getenv("AZURE_STORAGE_CONTAINER_NAME")
-	if containerName == "" {
-		containerName = "videos"
-	}
-	storageClient := storage.NewAzureBlobStorage(os.Getenv("AZURE_STORAGE_CONNECTION_STRING"), storageAccountName, containerName)
-
-	processor := video.NewProcessor(storageClient)
-
-	if err := processor.Process(id); err != nil {
+	if err := app.Processor.Process(id); err != nil {
 		slog.Error("Failed to process video", slog.String("video_id", id), slog.String("error", err.Error()))
 		serverErrorResponse(w)
 	}

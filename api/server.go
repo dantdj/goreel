@@ -13,10 +13,13 @@ import (
 )
 
 func Serve(port int) error {
+	app := NewApplication()
+	app.StartConsumers()
+
 	// Define the server object with some sensible timeout defaults to prevent lingering connections
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      routes(),
+		Handler:      routes(app),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
