@@ -57,8 +57,14 @@ func VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO: Probably good to do some content type validation
 
 	slog.Info("Starting video upload...")
-	storageAccountName := "goreelstorage"
-	containerName := "my-go-container"
+	storageAccountName := os.Getenv("AZURE_STORAGE_ACCOUNT_NAME")
+	if storageAccountName == "" {
+		storageAccountName = "goreelstorage"
+	}
+	containerName := os.Getenv("AZURE_STORAGE_CONTAINER_NAME")
+	if containerName == "" {
+		containerName = "videos"
+	}
 	storageClient := storage.NewAzureBlobStorage(os.Getenv("AZURE_STORAGE_CONNECTION_STRING"), storageAccountName, containerName)
 	blobName := utils.GenerateRandomId()
 
@@ -89,8 +95,14 @@ func VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
 func RetrieveVideoHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("vId")
 
-	storageAccountName := "goreelstorage"
-	containerName := "my-go-container"
+	storageAccountName := os.Getenv("AZURE_STORAGE_ACCOUNT_NAME")
+	if storageAccountName == "" {
+		storageAccountName = "goreelstorage"
+	}
+	containerName := os.Getenv("AZURE_STORAGE_CONTAINER_NAME")
+	if containerName == "" {
+		containerName = "videos"
+	}
 	storageClient := storage.NewAzureBlobStorage(os.Getenv("AZURE_STORAGE_CONNECTION_STRING"), storageAccountName, containerName)
 
 	videoData, contentLength, contentType := storageClient.Retrieve(id)

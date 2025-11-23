@@ -79,16 +79,22 @@ func methodNotAllowedResponse(w http.ResponseWriter, r *http.Request) {
 }
 
 func processVideo(videoId string) error {
-	storageAccountName := "goreelstorage"
-	containerName := "my-go-container"
+	storageAccountName := os.Getenv("AZURE_STORAGE_ACCOUNT_NAME")
+	if storageAccountName == "" {
+		storageAccountName = "goreelstorage"
+	}
+	containerName := os.Getenv("AZURE_STORAGE_CONTAINER_NAME")
+	if containerName == "" {
+		containerName = "videos"
+	}
 	storageClient := storage.NewAzureBlobStorage(os.Getenv("AZURE_STORAGE_CONNECTION_STRING"), storageAccountName, containerName)
+
+	slog.Info("Starting video processing", slog.String("video_id", videoId))
 
 	videoData, _, _ := storageClient.Retrieve(videoId)
 	defer videoData.Close()
 
-	// TODO: Sort this out, probably create the base dir and then
-	// the input and output dirs in one method
-	baseDir := "./" + videoId + "/"
+	baseDir := filepath.Join(os.TempDir(), videoId)
 	inputDir := filepath.Join(baseDir, "input")
 	inputPath := filepath.Join(inputDir, videoId)
 
@@ -100,16 +106,20 @@ func processVideo(videoId string) error {
 	if err != nil {
 		return fmt.Errorf("failed to save video to temp file: %w", err)
 	}
+	slog.Info("Video downloaded to temp", slog.String("video_id", videoId))
 
 	err = video.GenerateM3U8(videoId, inputPath, baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to generate M3U8 playlist: %w", err)
 	}
+	slog.Info("HLS generation complete", slog.String("video_id", videoId))
 
 	playlistFiles, err := getFilePaths(baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to get file paths: %w", err)
 	}
+
+	slog.Info("Uploading segments", slog.String("video_id", videoId), slog.Int("count", len(playlistFiles)))
 
 	for _, p := range playlistFiles {
 		file, _ := os.Open(p)
@@ -128,6 +138,8 @@ func processVideo(videoId string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete video from storage: %w", err)
 	}
+
+	slog.Info("Video processing complete", slog.String("video_id", videoId))
 
 	return nil
 }
