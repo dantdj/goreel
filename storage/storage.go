@@ -17,12 +17,14 @@ type Service interface {
 	Delete(blobName string) error
 }
 
+// AzureBlobStorage implements the Service interface for Azure Blob Storage.
 type AzureBlobStorage struct {
 	client        *azblob.Client
 	accountName   string
 	containerName string
 }
 
+// Creates a new AzureBlobStorage instance.
 func NewAzureBlobStorage(connStr, storageAccountName, containerName string) *AzureBlobStorage {
 	client, err := azblob.NewClientFromConnectionString(connStr, nil)
 	if err != nil {
@@ -45,7 +47,7 @@ func NewAzureBlobStorage(connStr, storageAccountName, containerName string) *Azu
 	}
 }
 
-// Takes video data and uploads it to blob storage using the provided name.
+// Uploads data to blob storage using the provided name.
 // Returns a string containing the URL at which the data can be found.
 func (abs *AzureBlobStorage) Upload(fileReader io.Reader, filesize int64, name string) string {
 	uploadResponse, err := abs.client.UploadStream(context.Background(), abs.containerName, name, fileReader, nil)
@@ -73,6 +75,7 @@ func (abs *AzureBlobStorage) Retrieve(blobName string) (io.ReadCloser, int64, st
 	return downloadResponse.Body, *downloadResponse.ContentLength, *downloadResponse.ContentType
 }
 
+// Deletes the blob with the given name.
 func (abs *AzureBlobStorage) Delete(blobName string) error {
 	_, err := abs.client.DeleteBlob(context.Background(), abs.containerName, blobName, nil)
 	if err != nil {
