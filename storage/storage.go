@@ -10,6 +10,13 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 )
 
+// Service defines the interface for storage operations
+type Service interface {
+	Upload(fileReader io.Reader, filesize int64, name string) string
+	Retrieve(blobName string) (io.ReadCloser, int64, string)
+	Delete(blobName string) error
+}
+
 type AzureBlobStorage struct {
 	client        *azblob.Client
 	accountName   string

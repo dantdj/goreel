@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/dantdj/goreel/queueing"
+	"github.com/dantdj/goreel/storage"
+	"github.com/dantdj/goreel/video"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -23,8 +25,20 @@ func routes() http.Handler {
 	}
 
 	rabbitClient.StartConsumer(videoProcessingQueueName, func(message []byte) error {
-		if err := processVideo(string(message)); err != nil {
-			slog.Error("Failed to process video", slog.String("video_id", string(message)), slog.String("error", err.Error()))
+		storageAccountName := os.Getenv("AZURE_STORAGE_ACCOUNT_NAME")
+		if storageAccountName == "" {
+			storageAccountName = "goreelstorage"
+		}
+		containerName := os.Getenv("AZURE_STORAGE_CONTAINER_NAME")
+		if containerName == "" {
+			containerName = "videos"
+		}
+		storageClient := storage.NewAzureBlobStorage(os.Getenv("AZURE_STORAGE_CONNECTION_STRING"), storageAccountName, containerName)
+		processor := video.NewProcessor(storageClient)
+
+		slog.Info("Received a message", slog.String("body", string(message)))
+		if err := processor.Process(string(message)); err != nil {
+			slog.Error("Error processing video", slog.String("error", err.Error()))
 		}
 		return nil
 	})

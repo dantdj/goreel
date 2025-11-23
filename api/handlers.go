@@ -11,6 +11,7 @@ import (
 	"github.com/dantdj/goreel/queueing"
 	"github.com/dantdj/goreel/storage"
 	"github.com/dantdj/goreel/utils"
+	"github.com/dantdj/goreel/video"
 )
 
 var maxRequestBodySize = 500 * 1024 * 1024
@@ -128,7 +129,19 @@ func RetrieveVideoHandler(w http.ResponseWriter, r *http.Request) {
 func ProcessVideoHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("vId")
 
-	if err := processVideo(id); err != nil {
+	storageAccountName := os.Getenv("AZURE_STORAGE_ACCOUNT_NAME")
+	if storageAccountName == "" {
+		storageAccountName = "goreelstorage"
+	}
+	containerName := os.Getenv("AZURE_STORAGE_CONTAINER_NAME")
+	if containerName == "" {
+		containerName = "videos"
+	}
+	storageClient := storage.NewAzureBlobStorage(os.Getenv("AZURE_STORAGE_CONNECTION_STRING"), storageAccountName, containerName)
+
+	processor := video.NewProcessor(storageClient)
+
+	if err := processor.Process(id); err != nil {
 		slog.Error("Failed to process video", slog.String("video_id", id), slog.String("error", err.Error()))
 		serverErrorResponse(w)
 	}

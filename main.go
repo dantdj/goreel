@@ -36,9 +36,16 @@ func main() {
 	}
 	defer handler.Close()
 
-	//logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	logger := slog.New(handler)
+	var logger *slog.Logger
+	// Allow use of JSON output in local environment,
+	// but default to Axiom in production
+	if os.Getenv("GOREEL_LOCAL") == "true" {
+		logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	} else {
+		logger = slog.New(handler)
+	}
 	slog.SetDefault(logger)
+
 	// Start the HTTP server.
 	if err := api.Serve(8089); err != nil {
 		slog.Error("Failed to start server", slog.String("error", err.Error()))

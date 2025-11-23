@@ -3,15 +3,8 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/fs"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-
-	"github.com/dantdj/goreel/storage"
-	"github.com/dantdj/goreel/video"
 )
 
 // A wrapper for an object to be returned as JSON in a response
@@ -76,115 +69,4 @@ func notFoundResponse(w http.ResponseWriter, r *http.Request) {
 func methodNotAllowedResponse(w http.ResponseWriter, r *http.Request) {
 	message := fmt.Sprintf("the %s method is not supported for this resource", r.Method)
 	errorResponse(w, http.StatusMethodNotAllowed, message)
-}
-
-func processVideo(videoId string) error {
-	storageAccountName := os.Getenv("AZURE_STORAGE_ACCOUNT_NAME")
-	if storageAccountName == "" {
-		storageAccountName = "goreelstorage"
-	}
-	containerName := os.Getenv("AZURE_STORAGE_CONTAINER_NAME")
-	if containerName == "" {
-		containerName = "videos"
-	}
-	storageClient := storage.NewAzureBlobStorage(os.Getenv("AZURE_STORAGE_CONNECTION_STRING"), storageAccountName, containerName)
-
-	slog.Info("Starting video processing", slog.String("video_id", videoId))
-
-	videoData, _, _ := storageClient.Retrieve(videoId)
-	defer videoData.Close()
-
-	baseDir := filepath.Join(os.TempDir(), videoId)
-	inputDir := filepath.Join(baseDir, "input")
-	inputPath := filepath.Join(inputDir, videoId)
-
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		return fmt.Errorf("failed to make temp directory %s: %w", baseDir, err)
-	}
-
-	err := saveToTemp(inputDir, videoId, videoData)
-	if err != nil {
-		return fmt.Errorf("failed to save video to temp file: %w", err)
-	}
-	slog.Info("Video downloaded to temp", slog.String("video_id", videoId))
-
-	err = video.GenerateM3U8(videoId, inputPath, baseDir)
-	if err != nil {
-		return fmt.Errorf("failed to generate M3U8 playlist: %w", err)
-	}
-	slog.Info("HLS generation complete", slog.String("video_id", videoId))
-
-	playlistFiles, err := getFilePaths(baseDir)
-	if err != nil {
-		return fmt.Errorf("failed to get file paths: %w", err)
-	}
-
-	slog.Info("Uploading segments", slog.String("video_id", videoId), slog.Int("count", len(playlistFiles)))
-
-	for _, p := range playlistFiles {
-		file, _ := os.Open(p)
-		fileInfo, _ := file.Stat()
-
-		storageClient.Upload(file, fileInfo.Size(), file.Name())
-	}
-
-	// Remove temporary files
-	err = os.RemoveAll(baseDir)
-	if err != nil {
-		return fmt.Errorf("failed to delete temp files: %w", err)
-	}
-
-	err = storageClient.Delete(videoId)
-	if err != nil {
-		return fmt.Errorf("failed to delete video from storage: %w", err)
-	}
-
-	slog.Info("Video processing complete", slog.String("video_id", videoId))
-
-	return nil
-}
-
-func saveToTemp(fileDir, filename string, videoData io.ReadCloser) error {
-	if err := os.MkdirAll(fileDir, 0755); err != nil {
-		return fmt.Errorf("failed to make input directory %s: %w", fileDir, err)
-	}
-	filepath := filepath.Join(fileDir, filename)
-	outputFile, err := os.Create(filepath)
-	if err != nil {
-		return fmt.Errorf("failed to create temp input file %s: %w", filepath, err)
-	}
-	defer outputFile.Close()
-
-	_, err = io.Copy(outputFile, videoData)
-	if err != nil {
-		return fmt.Errorf("failed to copy video data to temp file: %w", err)
-	}
-	return nil
-}
-
-// getFilePaths returns a slice of file paths within a given directory.
-func getFilePaths(dirPath string) ([]string, error) {
-	var filePaths []string
-
-	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip the input directory, we only want the output files
-		if d.IsDir() && path == filepath.Join(dirPath, "input") {
-			return filepath.SkipDir
-		}
-
-		if !d.IsDir() { // Only add files, not directories
-			filePaths = append(filePaths, path)
-		}
-		return nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("error walking directory: %w", err)
-	}
-
-	return filePaths, nil
 }
