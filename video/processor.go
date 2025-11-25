@@ -97,13 +97,8 @@ func (p *Processor) uploadFile(path string) error {
 	}
 	defer file.Close()
 
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return err
-	}
-
 	// The file name is used as the blob name
-	p.Storage.Upload(file, fileInfo.Size(), filepath.Base(path))
+	p.Storage.Upload(file, filepath.Base(path))
 	return nil
 }
 

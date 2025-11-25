@@ -31,58 +31,61 @@ func (app *Application) VideoUploadHandler(w http.ResponseWriter, r *http.Reques
 	// Limit the overall size of the request body
 	r.Body = http.MaxBytesReader(w, r.Body, int64(maxRequestBodySize))
 
-	err := r.ParseMultipartForm(10 * 1024) // Limit to 10 KB for other form fields
+	// Stream the file directly without buffering to disk
+	reader, err := r.MultipartReader()
 	if err != nil {
-		if err.Error() == "http: request body too large" {
-			slog.Error("Request body too large, rejecting request", slog.String("error", err.Error()), slog.Int("max_size", maxRequestBodySize/1024/1024), slog.Int64("actual_size", r.ContentLength))
-			http.Error(w, fmt.Sprintf("Request body too large. Max allowed is %d MB.", maxRequestBodySize/1024/1024), http.StatusRequestEntityTooLarge)
+		slog.Error("Error creating multipart reader", slog.String("error", err.Error()))
+		http.Error(w, "Invalid multipart request", http.StatusBadRequest)
+		return
+	}
+
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			slog.Error("Error reading multipart part", slog.String("error", err.Error()))
+			http.Error(w, "Error reading request body", http.StatusInternalServerError)
 			return
 		}
-		slog.Error("Error parsing multipart form", slog.String("error", err.Error()))
-		http.Error(w, "Error parsing form", http.StatusBadRequest)
-		return
+
+		if part.FormName() == "video_file" {
+			slog.Info("Starting video upload...")
+			blobName, err := utils.GenerateRandomId()
+			if err != nil {
+				slog.Error("Failed to generate blob name", slog.String("error", err.Error()))
+				serverErrorResponse(w)
+				return
+			}
+
+			blobLocation := app.Storage.Upload(part, blobName)
+
+			slog.Info("Uploaded video", slog.String("video_id", blobName))
+
+			env := envelope{
+				"video_id": blobName,
+				"location": blobLocation,
+			}
+
+			body := []byte(blobName)
+
+			err = app.RabbitClient.Publish(videoProcessingQueueName, body)
+			if err != nil {
+				slog.Error("Failed to publish message to RabbitMQ", slog.String("error", err.Error()))
+				serverErrorResponse(w)
+				return
+			}
+
+			if err := writeJSON(w, http.StatusOK, env, nil); err != nil {
+				slog.Error("Failed to return service info", slog.String("error", err.Error()))
+				serverErrorResponse(w)
+			}
+			return
+		}
 	}
 
-	file, handler, err := r.FormFile("video_file") // "video_file" is the name of the input in the HTML form
-	if err != nil {
-		slog.Error("Error retrieving file from form", slog.String("error", err.Error()))
-		http.Error(w, "Error retrieving file", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	// TODO: Probably good to do some content type validation
-
-	slog.Info("Starting video upload...")
-	blobName, err := utils.GenerateRandomId()
-	if err != nil {
-		slog.Error("Failed to generate blob name", slog.String("error", err.Error()))
-		serverErrorResponse(w)
-		return
-	}
-
-	blobLocation := app.Storage.Upload(file, handler.Size, blobName)
-
-	slog.Info("Uploaded video", slog.String("video_id", blobName))
-
-	env := envelope{
-		"video_id": blobName,
-		"location": blobLocation,
-	}
-
-	body := []byte(blobName)
-
-	err = app.RabbitClient.Publish(videoProcessingQueueName, body)
-	if err != nil {
-		slog.Error("Failed to publish message to RabbitMQ", slog.String("error", err.Error()))
-		serverErrorResponse(w)
-		return
-	}
-
-	if err := writeJSON(w, http.StatusOK, env, nil); err != nil {
-		slog.Error("Failed to return service info", slog.String("error", err.Error()))
-		serverErrorResponse(w)
-	}
+	http.Error(w, "video_file field not found", http.StatusBadRequest)
 }
 
 func (app *Application) RetrieveVideoHandler(w http.ResponseWriter, r *http.Request) {

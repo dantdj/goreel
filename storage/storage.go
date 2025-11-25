@@ -12,7 +12,7 @@ import (
 
 // Service defines the interface for storage operations
 type Service interface {
-	Upload(fileReader io.Reader, filesize int64, name string) string
+	Upload(fileReader io.Reader, name string) string
 	Retrieve(blobName string) (io.ReadCloser, int64, string)
 	Delete(blobName string) error
 }
@@ -49,7 +49,7 @@ func NewAzureBlobStorage(connStr, storageAccountName, containerName string) *Azu
 
 // Uploads data to blob storage using the provided name.
 // Returns a string containing the URL at which the data can be found.
-func (abs *AzureBlobStorage) Upload(fileReader io.Reader, filesize int64, name string) string {
+func (abs *AzureBlobStorage) Upload(fileReader io.Reader, name string) string {
 	uploadResponse, err := abs.client.UploadStream(context.Background(), abs.containerName, name, fileReader, nil)
 
 	if err != nil {
