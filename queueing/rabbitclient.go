@@ -1,6 +1,7 @@
 package queueing
 
 import (
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -17,19 +18,21 @@ type Client struct {
 func NewRabbitClient(url string) (*Client, error) {
 	conn, err := amqp091.Dial(url)
 	if err != nil {
-		slog.Error("Error creating RabbitMQ connection", slog.String("error", err.Error()))
-		return nil, err
+		return nil, fmt.Errorf("error creating RabbitMQ connection: %w", err)
 	}
 
 	ch, err := conn.Channel()
 	if err != nil {
-		slog.Error("Error creating RabbitMQ channel", slog.String("error", err.Error()))
 		conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("error creating RabbitMQ channel: %w", err)
 	}
 
 	// Only allow one message to be processed at a time
-	ch.Qos(1, 0, false)
+	if err := ch.Qos(1, 0, false); err != nil {
+		ch.Close()
+		conn.Close()
+		return nil, fmt.Errorf("error setting Qos: %w", err)
+	}
 
 	return &Client{
 		conn: conn,
@@ -40,16 +43,18 @@ func NewRabbitClient(url string) (*Client, error) {
 
 func (c *Client) Close() error {
 	if err := c.ch.Close(); err != nil {
-		slog.Error("Error closing RabbitMQ channel", slog.String("error", err.Error()))
+		// We still try to close the connection even if channel close fails
 		c.conn.Close()
-		return err
+		return fmt.Errorf("error closing RabbitMQ channel: %w", err)
 	}
-	return c.conn.Close()
+	if err := c.conn.Close(); err != nil {
+		return fmt.Errorf("error closing RabbitMQ connection: %w", err)
+	}
+	return nil
 }
 
 // Ensures that a queue with the given name exists.
 func (c *Client) EnsureQueue(queue string) error {
-	slog.Info("Declaring queue", slog.String("queue", queue))
 	_, err := c.ch.QueueDeclare(
 		queue, // name
 		false, // durable
@@ -59,8 +64,7 @@ func (c *Client) EnsureQueue(queue string) error {
 		nil,   // arguments
 	)
 	if err != nil {
-		slog.Error("Failed to declare queue", slog.String("queue", queue), slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("failed to declare queue %s: %w", queue, err)
 	}
 	return nil
 }
@@ -70,7 +74,6 @@ func (c *Client) Publish(queue string, body []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	slog.Info("Publishing message to RabbitMQ", slog.String("queue", queue), slog.Int("body_size", len(body)))
 	err := c.ch.Publish(
 		"",
 		queue,
@@ -81,8 +84,11 @@ func (c *Client) Publish(queue string, body []byte) error {
 			Body:        body,
 		},
 	)
+	if err != nil {
+		return fmt.Errorf("failed to publish message to queue %s: %w", queue, err)
+	}
 
-	return err
+	return nil
 }
 
 // Registers a consumer for the given queue name, processing messages with the provided handler function.
@@ -97,8 +103,7 @@ func (c *Client) StartConsumer(queue string, handler func([]byte) error) error {
 		nil,   // arguments
 	)
 	if err != nil {
-		slog.Error("Failed to consume queue", slog.String("queue", queue), slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("failed to consume queue %s: %w", queue, err)
 	}
 
 	go func() {
@@ -110,7 +115,9 @@ func (c *Client) StartConsumer(queue string, handler func([]byte) error) error {
 					}
 				}()
 
-				handler(b)
+				if err := handler(b); err != nil {
+					slog.Error("Consumer handler failed", slog.String("queue", queue), slog.String("error", err.Error()))
+				}
 			}(d.Body)
 		}
 		slog.Info("consumer channel closed for queue", slog.String("queue", queue))
