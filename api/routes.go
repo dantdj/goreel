@@ -17,5 +17,5 @@ func routes(app *Application) http.Handler {
 	router.HandlerFunc(http.MethodGet, "/download", app.RetrieveVideoHandler)
 	router.HandlerFunc(http.MethodGet, "/process", app.ProcessVideoHandler)
 
-	return recoverPanic(router)
+	return recoverPanic(enableCORS(router))
 }
