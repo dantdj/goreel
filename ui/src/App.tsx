@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
+import { UploadForm } from './UploadForm'
 
 function App() {
   const [count, setCount] = useState(0)
@@ -31,12 +32,16 @@ function App() {
         </a>
       </div>
       <h1>Vite + React</h1>
+
       <div className="card">
         <h2>API Status</h2>
         <pre style={{ textAlign: 'left', background: '#f4f4f4', padding: '1rem', borderRadius: '8px', color: '#333' }}>
           {ping}
         </pre>
       </div>
+
+      <UploadForm />
+
       <div className="card">
         <button onClick={() => setCount((count) => count + 1)}>
           count is {count}
